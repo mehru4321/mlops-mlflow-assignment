@@ -1,0 +1,19 @@
+name: housing-price-prediction-pipeline
+
+python_env: python_env.yaml
+
+entry_points:
+  main:
+    parameters:
+      data_path: {type: string, default: "data/raw/raw_data.csv"}
+      test_size: {type: float, default: 0.2}
+      n_estimators: {type: int, default: 100}
+      max_depth: {type: int, default: 10}
+      random_state: {type: int, default: 42}
+    command: |
+      python mlflow_pipeline.py \
+        --data-path {data_path} \
+        --test-size {test_size} \
+        --n-estimators {n_estimators} \
+        --max-depth {max_depth} \
+        --random-state {random_state}

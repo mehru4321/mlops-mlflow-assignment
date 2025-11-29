@@ -26,3 +26,10 @@ flake8==6.1.0
 # Deployment
 flask==3.0.0
 gunicorn==21.2.0
+
+mlflow
+scikit-learn
+pandas
+numpy
+pyyaml
+joblib

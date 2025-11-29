@@ -1,0 +1,279 @@
+name: MLflow Pipeline CI
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:  # Allows manual trigger
+
+jobs:
+  mlflow-pipeline-ci:
+    runs-on: ubuntu-latest
+    
+    steps:
+    # ========================================================================
+    # STAGE 1: Environment Setup
+    # ========================================================================
+    - name: Stage 1 - Checkout Code
+      uses: actions/checkout@v3
+      
+    - name: Stage 1 - Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+        
+    - name: Stage 1 - Install Dependencies
+      run: |
+        echo "=========================================="
+        echo "Installing Python dependencies..."
+        echo "=========================================="
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        echo "✓ Dependencies installed successfully"
+        
+    - name: Stage 1 - Verify Installation
+      run: |
+        echo "=========================================="
+        echo "Verifying installations..."
+        echo "=========================================="
+        python --version
+        pip list | grep -E "mlflow|scikit-learn|pandas|numpy"
+        echo "✓ Environment setup complete"
+    
+    # ========================================================================
+    # STAGE 2: Pipeline Validation & Compilation
+    # ========================================================================
+    - name: Stage 2 - Validate MLflow Project Structure
+      run: |
+        echo "=========================================="
+        echo "Validating MLflow project structure..."
+        echo "=========================================="
+        
+        # Check if MLproject file exists
+        if [ ! -f "MLproject" ]; then
+          echo "❌ ERROR: MLproject file not found"
+          exit 1
+        fi
+        echo "✓ MLproject file found"
+        
+        # Check if main pipeline script exists
+        if [ ! -f "mlflow_pipeline.py" ]; then
+          echo "❌ ERROR: mlflow_pipeline.py not found"
+          exit 1
+        fi
+        echo "✓ mlflow_pipeline.py found"
+        
+        # Validate MLproject syntax
+        python -c "import yaml; yaml.safe_load(open('MLproject'))"
+        echo "✓ MLproject is valid YAML"
+        
+    - name: Stage 2 - Syntax Check Pipeline Script
+      run: |
+        echo "=========================================="
+        echo "Checking Python syntax..."
+        echo "=========================================="
+        python -m py_compile mlflow_pipeline.py
+        echo "✓ mlflow_pipeline.py is syntactically correct"
+        
+    - name: Stage 2 - Validate Pipeline Components
+      run: |
+        echo "=========================================="
+        echo "Validating pipeline components..."
+        echo "=========================================="
+        python -c "
+        import mlflow_pipeline
+        import inspect
+        
+        # Check if all required functions exist
+        required_functions = [
+            'step_1_load_data',
+            'step_2_preprocess_data', 
+            'step_3_train_model',
+            'step_4_evaluate_model',
+            'run_complete_pipeline'
+        ]
+        
+        for func in required_functions:
+            if not hasattr(mlflow_pipeline, func):
+                print(f'❌ ERROR: Function {func} not found')
+                exit(1)
+            print(f'✓ Function {func} exists')
+            
+        print('✓ All pipeline components validated')
+        "
+        
+    - name: Stage 2 - Generate Pipeline Metadata
+      run: |
+        echo "=========================================="
+        echo "Generating pipeline metadata (MLflow equivalent to pipeline.yaml)..."
+        echo "=========================================="
+        python - <<EOF
+        import yaml
+        import json
+        from datetime import datetime
+        
+        # Create pipeline metadata (MLflow's equivalent to pipeline.yaml)
+        pipeline_metadata = {
+            'pipeline_name': 'housing-price-prediction',
+            'version': '1.0',
+            'generated_at': datetime.now().isoformat(),
+            'stages': [
+                {
+                    'stage_id': 1,
+                    'stage_name': 'data_extraction',
+                    'function': 'step_1_load_data',
+                    'outputs': ['dataframe']
+                },
+                {
+                    'stage_id': 2,
+                    'stage_name': 'preprocessing',
+                    'function': 'step_2_preprocess_data',
+                    'inputs': ['dataframe'],
+                    'outputs': ['X_train', 'X_test', 'y_train', 'y_test', 'feature_names']
+                },
+                {
+                    'stage_id': 3,
+                    'stage_name': 'model_training',
+                    'function': 'step_3_train_model',
+                    'inputs': ['X_train', 'y_train', 'feature_names'],
+                    'outputs': ['model']
+                },
+                {
+                    'stage_id': 4,
+                    'stage_name': 'evaluation',
+                    'function': 'step_4_evaluate_model',
+                    'inputs': ['model', 'X_test', 'y_test'],
+                    'outputs': ['metrics']
+                }
+            ],
+            'mlproject_config': yaml.safe_load(open('MLproject'))
+        }
+        
+        # Save as YAML
+        with open('pipeline_metadata.yaml', 'w') as f:
+            yaml.dump(pipeline_metadata, f, default_flow_style=False)
+        
+        print('✓ Pipeline metadata generated successfully')
+        print('\nPipeline Structure:')
+        print(json.dumps(pipeline_metadata['stages'], indent=2))
+        EOF
+        
+        cat pipeline_metadata.yaml
+        echo "✓ pipeline_metadata.yaml generated successfully"
+    
+    # ========================================================================
+    # STAGE 3: Pipeline Execution & Testing
+    # ========================================================================
+    - name: Stage 3 - Create Required Directories
+      run: |
+        echo "=========================================="
+        echo "Creating required directories..."
+        echo "=========================================="
+        mkdir -p data/raw
+        mkdir -p artifacts
+        mkdir -p mlruns
+        echo "✓ Directories created"
+        
+    - name: Stage 3 - Run Pipeline Test
+      run: |
+        echo "=========================================="
+        echo "Running MLflow pipeline..."
+        echo "=========================================="
+        python mlflow_pipeline.py \
+          --data-path data/raw/raw_data.csv \
+          --test-size 0.2 \
+          --n-estimators 50 \
+          --max-depth 5 \
+          --random-state 42
+        echo "✓ Pipeline executed successfully"
+        
+    - name: Stage 3 - Verify Pipeline Outputs
+      run: |
+        echo "=========================================="
+        echo "Verifying pipeline outputs..."
+        echo "=========================================="
+        
+        # Check if data was created
+        if [ ! -f "data/raw/raw_data.csv" ]; then
+          echo "❌ ERROR: Data file not created"
+          exit 1
+        fi
+        echo "✓ Data file created"
+        
+        # Check if artifacts were created
+        if [ ! -f "artifacts/scaler.pkl" ]; then
+          echo "❌ ERROR: Scaler artifact not created"
+          exit 1
+        fi
+        echo "✓ Scaler artifact created"
+        
+        if [ ! -f "artifacts/feature_importance.csv" ]; then
+          echo "❌ ERROR: Feature importance not created"
+          exit 1
+        fi
+        echo "✓ Feature importance created"
+        
+        if [ ! -f "artifacts/evaluation_metrics.json" ]; then
+          echo "❌ ERROR: Evaluation metrics not created"
+          exit 1
+        fi
+        echo "✓ Evaluation metrics created"
+        
+        # Check MLflow tracking
+        if [ ! -d "mlruns" ]; then
+          echo "❌ ERROR: MLflow tracking directory not created"
+          exit 1
+        fi
+        echo "✓ MLflow tracking directory exists"
+        
+        echo ""
+        echo "=========================================="
+        echo "Pipeline validation complete!"
+        echo "=========================================="
+        
+    - name: Stage 3 - Display Metrics
+      run: |
+        echo "=========================================="
+        echo "Final Evaluation Metrics:"
+        echo "=========================================="
+        cat artifacts/evaluation_metrics.json
+        
+    # ========================================================================
+    # STAGE 4: Artifact Upload (Bonus)
+    # ========================================================================
+    - name: Upload Pipeline Artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: pipeline-artifacts
+        path: |
+          artifacts/
+          pipeline_metadata.yaml
+          data/raw/raw_data.csv
+        retention-days: 30
+        
+    - name: Upload MLflow Tracking Data
+      uses: actions/upload-artifact@v3
+      with:
+        name: mlflow-tracking
+        path: mlruns/
+        retention-days: 30
+        
+    # ========================================================================
+    # Final Status
+    # ========================================================================
+    - name: CI Pipeline Summary
+      if: success()
+      run: |
+        echo ""
+        echo "╔════════════════════════════════════════════════════════════╗"
+        echo "║                                                            ║"
+        echo "║          ✓ ALL STAGES COMPLETED SUCCESSFULLY!             ║"
+        echo "║                                                            ║"
+        echo "╚════════════════════════════════════════════════════════════╝"
+        echo ""
+        echo "✓ Stage 1: Environment Setup - PASSED"
+        echo "✓ Stage 2: Pipeline Validation - PASSED"
+        echo "✓ Stage 3: Pipeline Execution - PASSED"
+        echo ""
+        echo "Pipeline artifacts available for download in Actions tab"
