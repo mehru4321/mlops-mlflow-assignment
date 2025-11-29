@@ -1,12 +1,10 @@
 # Housing Price Prediction - MLOps Pipeline
 
-[![MLflow Pipeline CI](https://github.com/YOUR_USERNAME/YOUR_REPO_NAME/actions/workflows/mlflow-pipeline.yml/badge.svg)](https://github.com/YOUR_USERNAME/YOUR_REPO_NAME/actions/workflows/mlflow-pipeline.yml)
-
 A complete MLOps pipeline for predicting housing prices using the California Housing dataset. This project demonstrates end-to-end machine learning operations including data versioning with DVC, experiment tracking with MLflow, and continuous integration with GitHub Actions.
 
 ---
 
-## 📋 Table of Contents
+## Table of Contents
 
 - [Project Overview](#project-overview)
 - [Project Structure](#project-structure)
