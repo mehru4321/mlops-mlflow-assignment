@@ -1,0 +1,121 @@
+# PIPELINE DEFINITION
+# Name: data-extraction
+# Description: Data Extraction Component
+#              Fetches versioned dataset from DVC remote storage
+#              
+#              Inputs:
+#                  - data_path (str): Path to the data file in DVC (e.g., 'data/raw/raw_data.csv')
+#                  - dvc_remote (str): DVC remote storage location
+#                  
+#              Outputs:
+#                  - output_data (Dataset): Extracted dataset artifact
+# Inputs:
+#    data_path: str
+#    dvc_remote: str
+# Outputs:
+#    output_data: system.Dataset
+components:
+  comp-data-extraction:
+    executorLabel: exec-data-extraction
+    inputDefinitions:
+      parameters:
+        data_path:
+          parameterType: STRING
+        dvc_remote:
+          parameterType: STRING
+    outputDefinitions:
+      artifacts:
+        output_data:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
+deploymentSpec:
+  executors:
+    exec-data-extraction:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - data_extraction
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'dvc' 'pandas'\
+          \  &&  python3 -m pip install --quiet --no-warn-script-location 'kfp==2.15.1'\
+          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"' && \"\
+          $0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef data_extraction(\n    data_path: str,\n    dvc_remote: str,\n\
+          \    output_data: dsl.Output[dsl.Dataset]\n):\n    \"\"\"\n    Data Extraction\
+          \ Component\n    Fetches versioned dataset from DVC remote storage\n\n \
+          \   Inputs:\n        - data_path (str): Path to the data file in DVC (e.g.,\
+          \ 'data/raw/raw_data.csv')\n        - dvc_remote (str): DVC remote storage\
+          \ location\n\n    Outputs:\n        - output_data (Dataset): Extracted dataset\
+          \ artifact\n    \"\"\"\n    import subprocess\n    import pandas as pd\n\
+          \    import os\n\n    print(f\"Extracting data from DVC remote: {dvc_remote}\"\
+          )\n    print(f\"Data path: {data_path}\")\n\n    # Initialize DVC and configure\
+          \ remote\n    subprocess.run(['dvc', 'init', '--no-scm'], check=False)\n\
+          \    subprocess.run(['dvc', 'remote', 'add', '-d', 'myremote', dvc_remote],\
+          \ check=False)\n\n    # Pull data from DVC\n    try:\n        result = subprocess.run(['dvc',\
+          \ 'pull', data_path], \n                              capture_output=True,\
+          \ text=True, check=True)\n        print(f\"DVC pull output: {result.stdout}\"\
+          )\n    except subprocess.CalledProcessError as e:\n        print(f\"DVC\
+          \ pull failed: {e.stderr}\")\n        # If DVC pull fails, try to read the\
+          \ file directly\n        print(\"Attempting to read file directly...\")\n\
+          \n    # Load the data\n    if os.path.exists(data_path):\n        df = pd.read_csv(data_path)\n\
+          \    else:\n        raise FileNotFoundError(f\"Data file not found at {data_path}\"\
+          )\n\n    # Save to output artifact\n    df.to_csv(output_data.path, index=False)\n\
+          \n    print(f\"Data extraction completed. Shape: {df.shape}\")\n    print(f\"\
+          Columns: {list(df.columns)}\")\n\n"
+        image: python:3.9
+pipelineInfo:
+  name: data-extraction
+root:
+  dag:
+    outputs:
+      artifacts:
+        output_data:
+          artifactSelectors:
+          - outputArtifactKey: output_data
+            producerSubtask: data-extraction
+    tasks:
+      data-extraction:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-data-extraction
+        inputs:
+          parameters:
+            data_path:
+              componentInputParameter: data_path
+            dvc_remote:
+              componentInputParameter: dvc_remote
+        taskInfo:
+          name: data-extraction
+  inputDefinitions:
+    parameters:
+      data_path:
+        parameterType: STRING
+      dvc_remote:
+        parameterType: STRING
+  outputDefinitions:
+    artifacts:
+      output_data:
+        artifactType:
+          schemaTitle: system.Dataset
+          schemaVersion: 0.0.1
+schemaVersion: 2.1.0
+sdkVersion: kfp-2.15.1

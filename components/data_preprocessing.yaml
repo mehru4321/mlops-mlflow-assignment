@@ -1,0 +1,213 @@
+# PIPELINE DEFINITION
+# Name: data-preprocessing
+# Description: Data Preprocessing Component
+#              Handles cleaning, scaling, and splitting data into train/test sets
+#              
+#              Inputs:
+#                  - input_data (Dataset): Raw input dataset
+#                  - test_size (float): Proportion of dataset for testing (default: 0.2)
+#                  - random_state (int): Random seed for reproducibility (default: 42)
+#                  
+#              Outputs:
+#                  - train_data (Dataset): Preprocessed training dataset
+#                  - test_data (Dataset): Preprocessed testing dataset
+#                  - train_samples (int): Number of training samples
+#                  - test_samples (int): Number of test samples
+#                  - n_features (int): Number of features
+# Inputs:
+#    input_data: system.Dataset
+#    random_state: int [Default: 42.0]
+#    test_size: float [Default: 0.2]
+# Outputs:
+#    n_features: int
+#    test_data: system.Dataset
+#    test_samples: int
+#    train_data: system.Dataset
+#    train_samples: int
+components:
+  comp-data-preprocessing:
+    executorLabel: exec-data-preprocessing
+    inputDefinitions:
+      artifacts:
+        input_data:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
+      parameters:
+        random_state:
+          defaultValue: 42.0
+          isOptional: true
+          parameterType: NUMBER_INTEGER
+        test_size:
+          defaultValue: 0.2
+          isOptional: true
+          parameterType: NUMBER_DOUBLE
+    outputDefinitions:
+      artifacts:
+        test_data:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
+        train_data:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
+      parameters:
+        n_features:
+          parameterType: NUMBER_INTEGER
+        test_samples:
+          parameterType: NUMBER_INTEGER
+        train_samples:
+          parameterType: NUMBER_INTEGER
+deploymentSpec:
+  executors:
+    exec-data-preprocessing:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - data_preprocessing
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'pandas' 'scikit-learn'\
+          \ 'numpy'  &&  python3 -m pip install --quiet --no-warn-script-location\
+          \ 'kfp==2.15.1' '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"\
+          3.9\"' && \"$0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef data_preprocessing(\n    input_data: dsl.Input[dsl.Dataset],\n\
+          \    train_data: dsl.Output[dsl.Dataset],\n    test_data: dsl.Output[dsl.Dataset],\n\
+          \    test_size: float = 0.2,\n    random_state: int = 42\n) -> NamedTuple('Outputs',\
+          \ [('train_samples', int), ('test_samples', int), ('n_features', int)]):\n\
+          \    \"\"\"\n    Data Preprocessing Component\n    Handles cleaning, scaling,\
+          \ and splitting data into train/test sets\n\n    Inputs:\n        - input_data\
+          \ (Dataset): Raw input dataset\n        - test_size (float): Proportion\
+          \ of dataset for testing (default: 0.2)\n        - random_state (int): Random\
+          \ seed for reproducibility (default: 42)\n\n    Outputs:\n        - train_data\
+          \ (Dataset): Preprocessed training dataset\n        - test_data (Dataset):\
+          \ Preprocessed testing dataset\n        - train_samples (int): Number of\
+          \ training samples\n        - test_samples (int): Number of test samples\n\
+          \        - n_features (int): Number of features\n    \"\"\"\n    import\
+          \ pandas as pd\n    import numpy as np\n    from sklearn.model_selection\
+          \ import train_test_split\n    from sklearn.preprocessing import StandardScaler\n\
+          \    from collections import namedtuple\n\n    print(\"Starting data preprocessing...\"\
+          )\n\n    # Load data\n    df = pd.read_csv(input_data.path)\n    print(f\"\
+          Loaded data with shape: {df.shape}\")\n\n    # Handle missing values\n \
+          \   print(\"Checking for missing values...\")\n    missing_counts = df.isnull().sum()\n\
+          \    if missing_counts.sum() > 0:\n        print(f\"Missing values found:\\\
+          n{missing_counts[missing_counts > 0]}\")\n        # Fill missing values\
+          \ with median for numerical columns\n        df = df.fillna(df.median(numeric_only=True))\n\
+          \        print(\"Missing values filled with median\")\n    else:\n     \
+          \   print(\"No missing values found\")\n\n    # Separate features and target\n\
+          \    X = df.drop('target', axis=1)\n    y = df['target']\n\n    print(f\"\
+          Features shape: {X.shape}\")\n    print(f\"Target shape: {y.shape}\")\n\n\
+          \    # Split data into train and test sets\n    X_train, X_test, y_train,\
+          \ y_test = train_test_split(\n        X, y, test_size=test_size, random_state=random_state,\
+          \ shuffle=True\n    )\n\n    print(f\"Train set size: {X_train.shape[0]}\"\
+          )\n    print(f\"Test set size: {X_test.shape[0]}\")\n\n    # Standardize\
+          \ features (scale to mean=0, std=1)\n    scaler = StandardScaler()\n   \
+          \ X_train_scaled = scaler.fit_transform(X_train)\n    X_test_scaled = scaler.transform(X_test)\n\
+          \n    print(\"Features standardized using StandardScaler\")\n\n    # Create\
+          \ DataFrames with scaled data\n    train_df = pd.DataFrame(X_train_scaled,\
+          \ columns=X.columns)\n    train_df['target'] = y_train.values\n\n    test_df\
+          \ = pd.DataFrame(X_test_scaled, columns=X.columns)\n    test_df['target']\
+          \ = y_test.values\n\n    # Save to output artifacts\n    train_df.to_csv(train_data.path,\
+          \ index=False)\n    test_df.to_csv(test_data.path, index=False)\n\n    print(f\"\
+          Preprocessing completed successfully\")\n    print(f\"Train data saved:\
+          \ {train_data.path}\")\n    print(f\"Test data saved: {test_data.path}\"\
+          )\n\n    # Return metrics\n    outputs = namedtuple('Outputs', ['train_samples',\
+          \ 'test_samples', 'n_features'])\n    return outputs(\n        train_samples=int(X_train.shape[0]),\n\
+          \        test_samples=int(X_test.shape[0]),\n        n_features=int(X.shape[1])\n\
+          \    )\n\n"
+        image: python:3.9
+pipelineInfo:
+  name: data-preprocessing
+root:
+  dag:
+    outputs:
+      artifacts:
+        test_data:
+          artifactSelectors:
+          - outputArtifactKey: test_data
+            producerSubtask: data-preprocessing
+        train_data:
+          artifactSelectors:
+          - outputArtifactKey: train_data
+            producerSubtask: data-preprocessing
+      parameters:
+        n_features:
+          valueFromParameter:
+            outputParameterKey: n_features
+            producerSubtask: data-preprocessing
+        test_samples:
+          valueFromParameter:
+            outputParameterKey: test_samples
+            producerSubtask: data-preprocessing
+        train_samples:
+          valueFromParameter:
+            outputParameterKey: train_samples
+            producerSubtask: data-preprocessing
+    tasks:
+      data-preprocessing:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-data-preprocessing
+        inputs:
+          artifacts:
+            input_data:
+              componentInputArtifact: input_data
+          parameters:
+            random_state:
+              componentInputParameter: random_state
+            test_size:
+              componentInputParameter: test_size
+        taskInfo:
+          name: data-preprocessing
+  inputDefinitions:
+    artifacts:
+      input_data:
+        artifactType:
+          schemaTitle: system.Dataset
+          schemaVersion: 0.0.1
+    parameters:
+      random_state:
+        defaultValue: 42.0
+        isOptional: true
+        parameterType: NUMBER_INTEGER
+      test_size:
+        defaultValue: 0.2
+        isOptional: true
+        parameterType: NUMBER_DOUBLE
+  outputDefinitions:
+    artifacts:
+      test_data:
+        artifactType:
+          schemaTitle: system.Dataset
+          schemaVersion: 0.0.1
+      train_data:
+        artifactType:
+          schemaTitle: system.Dataset
+          schemaVersion: 0.0.1
+    parameters:
+      n_features:
+        parameterType: NUMBER_INTEGER
+      test_samples:
+        parameterType: NUMBER_INTEGER
+      train_samples:
+        parameterType: NUMBER_INTEGER
+schemaVersion: 2.1.0
+sdkVersion: kfp-2.15.1

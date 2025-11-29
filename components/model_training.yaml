@@ -1,0 +1,227 @@
+# PIPELINE DEFINITION
+# Name: model-training
+# Description: Model Training Component
+#              Trains a Random Forest Classifier on the training data and saves the model artifact
+#              
+#              Inputs:
+#                  - train_data (Dataset): Preprocessed training dataset
+#                  - n_estimators (int): Number of trees in the forest (default: 100)
+#                  - max_depth (int): Maximum depth of trees (default: 10)
+#                  - min_samples_split (int): Minimum samples required to split node (default: 2)
+#                  - random_state (int): Random seed for reproducibility (default: 42)
+#                  
+#              Outputs:
+#                  - model_output (Model): Trained Random Forest model artifact
+#                  - train_score (float): Training R² score
+#                  - feature_importance_top3 (str): Top 3 most important features
+#                  
+#              Description:
+#                  This component trains a Random Forest Regressor on housing price data.
+#                  The model learns patterns from the training data and is saved as a pickle file.
+#                  It also computes feature importance to understand which features contribute most.
+# Inputs:
+#    max_depth: int [Default: 10.0]
+#    min_samples_split: int [Default: 2.0]
+#    n_estimators: int [Default: 100.0]
+#    random_state: int [Default: 42.0]
+#    train_data: system.Dataset
+# Outputs:
+#    feature_importance_top3: str
+#    model_output: system.Model
+#    train_score: float
+components:
+  comp-model-training:
+    executorLabel: exec-model-training
+    inputDefinitions:
+      artifacts:
+        train_data:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
+      parameters:
+        max_depth:
+          defaultValue: 10.0
+          isOptional: true
+          parameterType: NUMBER_INTEGER
+        min_samples_split:
+          defaultValue: 2.0
+          isOptional: true
+          parameterType: NUMBER_INTEGER
+        n_estimators:
+          defaultValue: 100.0
+          isOptional: true
+          parameterType: NUMBER_INTEGER
+        random_state:
+          defaultValue: 42.0
+          isOptional: true
+          parameterType: NUMBER_INTEGER
+    outputDefinitions:
+      artifacts:
+        model_output:
+          artifactType:
+            schemaTitle: system.Model
+            schemaVersion: 0.0.1
+      parameters:
+        feature_importance_top3:
+          parameterType: STRING
+        train_score:
+          parameterType: NUMBER_DOUBLE
+deploymentSpec:
+  executors:
+    exec-model-training:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - model_training
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'pandas' 'scikit-learn'\
+          \ 'numpy' 'joblib'  &&  python3 -m pip install --quiet --no-warn-script-location\
+          \ 'kfp==2.15.1' '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"\
+          3.9\"' && \"$0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef model_training(\n    train_data: dsl.Input[dsl.Dataset],\n  \
+          \  model_output: dsl.Output[dsl.Model],\n    n_estimators: int = 100,\n\
+          \    max_depth: int = 10,\n    min_samples_split: int = 2,\n    random_state:\
+          \ int = 42\n) -> NamedTuple('Outputs', [('train_score', float), ('feature_importance_top3',\
+          \ str)]):\n    \"\"\"\n    Model Training Component\n    Trains a Random\
+          \ Forest Classifier on the training data and saves the model artifact\n\n\
+          \    Inputs:\n        - train_data (Dataset): Preprocessed training dataset\n\
+          \        - n_estimators (int): Number of trees in the forest (default: 100)\n\
+          \        - max_depth (int): Maximum depth of trees (default: 10)\n     \
+          \   - min_samples_split (int): Minimum samples required to split node (default:\
+          \ 2)\n        - random_state (int): Random seed for reproducibility (default:\
+          \ 42)\n\n    Outputs:\n        - model_output (Model): Trained Random Forest\
+          \ model artifact\n        - train_score (float): Training R\xB2 score\n\
+          \        - feature_importance_top3 (str): Top 3 most important features\n\
+          \n    Description:\n        This component trains a Random Forest Regressor\
+          \ on housing price data.\n        The model learns patterns from the training\
+          \ data and is saved as a pickle file.\n        It also computes feature\
+          \ importance to understand which features contribute most.\n    \"\"\"\n\
+          \    import pandas as pd\n    import numpy as np\n    from sklearn.ensemble\
+          \ import RandomForestRegressor\n    from sklearn.metrics import r2_score,\
+          \ mean_squared_error\n    import joblib\n    from collections import namedtuple\n\
+          \n    print(\"=\"*50)\n    print(\"MODEL TRAINING COMPONENT\")\n    print(\"\
+          =\"*50)\n\n    # Load training data\n    train_df = pd.read_csv(train_data.path)\n\
+          \    X_train = train_df.drop('target', axis=1)\n    y_train = train_df['target']\n\
+          \n    print(f\"\\nTraining data loaded:\")\n    print(f\"  - Samples: {X_train.shape[0]}\"\
+          )\n    print(f\"  - Features: {X_train.shape[1]}\")\n    print(f\"  - Feature\
+          \ names: {list(X_train.columns)}\")\n\n    # Initialize Random Forest Regressor\n\
+          \    print(f\"\\nInitializing Random Forest Regressor with:\")\n    print(f\"\
+          \  - n_estimators: {n_estimators}\")\n    print(f\"  - max_depth: {max_depth}\"\
+          )\n    print(f\"  - min_samples_split: {min_samples_split}\")\n    print(f\"\
+          \  - random_state: {random_state}\")\n\n    model = RandomForestRegressor(\n\
+          \        n_estimators=n_estimators,\n        max_depth=max_depth,\n    \
+          \    min_samples_split=min_samples_split,\n        random_state=random_state,\n\
+          \        n_jobs=-1,  # Use all available cores\n        verbose=1\n    )\n\
+          \n    # Train the model\n    print(\"\\nTraining model...\")\n    model.fit(X_train,\
+          \ y_train)\n    print(\"Training completed!\")\n\n    # Evaluate on training\
+          \ data\n    y_train_pred = model.predict(X_train)\n    train_r2 = r2_score(y_train,\
+          \ y_train_pred)\n    train_mse = mean_squared_error(y_train, y_train_pred)\n\
+          \    train_rmse = np.sqrt(train_mse)\n\n    print(f\"\\nTraining Performance:\"\
+          )\n    print(f\"  - R\xB2 Score: {train_r2:.4f}\")\n    print(f\"  - MSE:\
+          \ {train_mse:.4f}\")\n    print(f\"  - RMSE: {train_rmse:.4f}\")\n\n   \
+          \ # Get feature importance\n    feature_importance = pd.DataFrame({\n  \
+          \      'feature': X_train.columns,\n        'importance': model.feature_importances_\n\
+          \    }).sort_values('importance', ascending=False)\n\n    print(f\"\\nFeature\
+          \ Importance (Top 5):\")\n    print(feature_importance.head())\n\n    #\
+          \ Get top 3 features as string\n    top3_features = ', '.join([\n      \
+          \  f\"{row['feature']}({row['importance']:.3f})\" \n        for _, row in\
+          \ feature_importance.head(3).iterrows()\n    ])\n\n    # Save model using\
+          \ joblib\n    joblib.dump(model, model_output.path)\n    print(f\"\\nModel\
+          \ saved to: {model_output.path}\")\n\n    print(\"=\"*50)\n\n    # Return\
+          \ outputs\n    outputs = namedtuple('Outputs', ['train_score', 'feature_importance_top3'])\n\
+          \    return outputs(train_score=float(train_r2), feature_importance_top3=top3_features)\n\
+          \n"
+        image: python:3.9
+pipelineInfo:
+  name: model-training
+root:
+  dag:
+    outputs:
+      artifacts:
+        model_output:
+          artifactSelectors:
+          - outputArtifactKey: model_output
+            producerSubtask: model-training
+      parameters:
+        feature_importance_top3:
+          valueFromParameter:
+            outputParameterKey: feature_importance_top3
+            producerSubtask: model-training
+        train_score:
+          valueFromParameter:
+            outputParameterKey: train_score
+            producerSubtask: model-training
+    tasks:
+      model-training:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-model-training
+        inputs:
+          artifacts:
+            train_data:
+              componentInputArtifact: train_data
+          parameters:
+            max_depth:
+              componentInputParameter: max_depth
+            min_samples_split:
+              componentInputParameter: min_samples_split
+            n_estimators:
+              componentInputParameter: n_estimators
+            random_state:
+              componentInputParameter: random_state
+        taskInfo:
+          name: model-training
+  inputDefinitions:
+    artifacts:
+      train_data:
+        artifactType:
+          schemaTitle: system.Dataset
+          schemaVersion: 0.0.1
+    parameters:
+      max_depth:
+        defaultValue: 10.0
+        isOptional: true
+        parameterType: NUMBER_INTEGER
+      min_samples_split:
+        defaultValue: 2.0
+        isOptional: true
+        parameterType: NUMBER_INTEGER
+      n_estimators:
+        defaultValue: 100.0
+        isOptional: true
+        parameterType: NUMBER_INTEGER
+      random_state:
+        defaultValue: 42.0
+        isOptional: true
+        parameterType: NUMBER_INTEGER
+  outputDefinitions:
+    artifacts:
+      model_output:
+        artifactType:
+          schemaTitle: system.Model
+          schemaVersion: 0.0.1
+    parameters:
+      feature_importance_top3:
+        parameterType: STRING
+      train_score:
+        parameterType: NUMBER_DOUBLE
+schemaVersion: 2.1.0
+sdkVersion: kfp-2.15.1

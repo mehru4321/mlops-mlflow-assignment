@@ -1,0 +1,210 @@
+# PIPELINE DEFINITION
+# Name: model-evaluation
+# Description: Model Evaluation Component
+#              Loads the trained model, evaluates it on test set, and saves metrics
+#              
+#              Inputs:
+#                  - test_data (Dataset): Preprocessed test dataset
+#                  - model (Model): Trained model artifact
+#                  
+#              Outputs:
+#                  - metrics_output (Metrics): Evaluation metrics file (JSON format)
+#                  - test_r2 (float): Test R² score
+#                  - test_rmse (float): Test Root Mean Squared Error
+#                  - test_mae (float): Test Mean Absolute Error
+#                  - test_mape (float): Test Mean Absolute Percentage Error
+#                  
+#              Description:
+#                  This component evaluates the trained model on unseen test data.
+#                  It computes multiple regression metrics including R², RMSE, MAE, and MAPE.
+#                  Metrics are saved to a JSON file for tracking and comparison.
+# Inputs:
+#    model: system.Model
+#    test_data: system.Dataset
+# Outputs:
+#    metrics_output: system.Metrics
+#    test_mae: float
+#    test_mape: float
+#    test_r2: float
+#    test_rmse: float
+components:
+  comp-model-evaluation:
+    executorLabel: exec-model-evaluation
+    inputDefinitions:
+      artifacts:
+        model:
+          artifactType:
+            schemaTitle: system.Model
+            schemaVersion: 0.0.1
+        test_data:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
+    outputDefinitions:
+      artifacts:
+        metrics_output:
+          artifactType:
+            schemaTitle: system.Metrics
+            schemaVersion: 0.0.1
+      parameters:
+        test_mae:
+          parameterType: NUMBER_DOUBLE
+        test_mape:
+          parameterType: NUMBER_DOUBLE
+        test_r2:
+          parameterType: NUMBER_DOUBLE
+        test_rmse:
+          parameterType: NUMBER_DOUBLE
+deploymentSpec:
+  executors:
+    exec-model-evaluation:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - model_evaluation
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'pandas' 'scikit-learn'\
+          \ 'numpy' 'joblib'  &&  python3 -m pip install --quiet --no-warn-script-location\
+          \ 'kfp==2.15.1' '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"\
+          3.9\"' && \"$0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef model_evaluation(\n    test_data: dsl.Input[dsl.Dataset],\n \
+          \   model: dsl.Input[dsl.Model],\n    metrics_output: dsl.Output[dsl.Metrics]\n\
+          ) -> NamedTuple('Outputs', [('test_r2', float), ('test_rmse', float), \n\
+          \                             ('test_mae', float), ('test_mape', float)]):\n\
+          \    \"\"\"\n    Model Evaluation Component\n    Loads the trained model,\
+          \ evaluates it on test set, and saves metrics\n\n    Inputs:\n        -\
+          \ test_data (Dataset): Preprocessed test dataset\n        - model (Model):\
+          \ Trained model artifact\n\n    Outputs:\n        - metrics_output (Metrics):\
+          \ Evaluation metrics file (JSON format)\n        - test_r2 (float): Test\
+          \ R\xB2 score\n        - test_rmse (float): Test Root Mean Squared Error\n\
+          \        - test_mae (float): Test Mean Absolute Error\n        - test_mape\
+          \ (float): Test Mean Absolute Percentage Error\n\n    Description:\n   \
+          \     This component evaluates the trained model on unseen test data.\n\
+          \        It computes multiple regression metrics including R\xB2, RMSE,\
+          \ MAE, and MAPE.\n        Metrics are saved to a JSON file for tracking\
+          \ and comparison.\n    \"\"\"\n    import pandas as pd\n    import numpy\
+          \ as np\n    from sklearn.metrics import (\n        r2_score, mean_squared_error,\
+          \ \n        mean_absolute_error, mean_absolute_percentage_error\n    )\n\
+          \    import joblib\n    import json\n    from collections import namedtuple\n\
+          \n    print(\"=\"*50)\n    print(\"MODEL EVALUATION COMPONENT\")\n    print(\"\
+          =\"*50)\n\n    # Load test data\n    test_df = pd.read_csv(test_data.path)\n\
+          \    X_test = test_df.drop('target', axis=1)\n    y_test = test_df['target']\n\
+          \n    print(f\"\\nTest data loaded:\")\n    print(f\"  - Samples: {X_test.shape[0]}\"\
+          )\n    print(f\"  - Features: {X_test.shape[1]}\")\n\n    # Load trained\
+          \ model\n    trained_model = joblib.load(model.path)\n    print(f\"\\nModel\
+          \ loaded from: {model.path}\")\n    print(f\"Model type: {type(trained_model).__name__}\"\
+          )\n\n    # Make predictions\n    print(\"\\nMaking predictions on test data...\"\
+          )\n    y_pred = trained_model.predict(X_test)\n\n    # Calculate evaluation\
+          \ metrics\n    print(\"\\nCalculating evaluation metrics...\")\n\n    r2\
+          \ = r2_score(y_test, y_pred)\n    mse = mean_squared_error(y_test, y_pred)\n\
+          \    rmse = np.sqrt(mse)\n    mae = mean_absolute_error(y_test, y_pred)\n\
+          \    mape = mean_absolute_percentage_error(y_test, y_pred) * 100  # Convert\
+          \ to percentage\n\n    # Calculate additional metrics\n    max_error = np.max(np.abs(y_test\
+          \ - y_pred))\n    median_error = np.median(np.abs(y_test - y_pred))\n\n\
+          \    print(f\"\\n{'='*50}\")\n    print(\"EVALUATION RESULTS\")\n    print(f\"\
+          {'='*50}\")\n    print(f\"R\xB2 Score:                    {r2:.4f}\")\n\
+          \    print(f\"Root Mean Squared Error:     {rmse:.4f}\")\n    print(f\"\
+          Mean Absolute Error:         {mae:.4f}\")\n    print(f\"Mean Absolute %\
+          \ Error:       {mape:.2f}%\")\n    print(f\"Maximum Error:             \
+          \  {max_error:.4f}\")\n    print(f\"Median Absolute Error:       {median_error:.4f}\"\
+          )\n    print(f\"{'='*50}\")\n\n    # Prepare metrics dictionary\n    metrics\
+          \ = {\n        'test_r2_score': float(r2),\n        'test_rmse': float(rmse),\n\
+          \        'test_mse': float(mse),\n        'test_mae': float(mae),\n    \
+          \    'test_mape': float(mape),\n        'test_max_error': float(max_error),\n\
+          \        'test_median_error': float(median_error),\n        'n_test_samples':\
+          \ int(len(y_test)),\n        'prediction_mean': float(np.mean(y_pred)),\n\
+          \        'prediction_std': float(np.std(y_pred)),\n        'actual_mean':\
+          \ float(np.mean(y_test)),\n        'actual_std': float(np.std(y_test))\n\
+          \    }\n\n    # Save metrics to JSON file\n    with open(metrics_output.path,\
+          \ 'w') as f:\n        json.dump(metrics, f, indent=4)\n\n    print(f\"\\\
+          nMetrics saved to: {metrics_output.path}\")\n    print(\"=\"*50)\n\n   \
+          \ # Return key metrics\n    outputs = namedtuple('Outputs', ['test_r2',\
+          \ 'test_rmse', 'test_mae', 'test_mape'])\n    return outputs(\n        test_r2=float(r2),\n\
+          \        test_rmse=float(rmse),\n        test_mae=float(mae),\n        test_mape=float(mape)\n\
+          \    )\n\n"
+        image: python:3.9
+pipelineInfo:
+  name: model-evaluation
+root:
+  dag:
+    outputs:
+      artifacts:
+        metrics_output:
+          artifactSelectors:
+          - outputArtifactKey: metrics_output
+            producerSubtask: model-evaluation
+      parameters:
+        test_mae:
+          valueFromParameter:
+            outputParameterKey: test_mae
+            producerSubtask: model-evaluation
+        test_mape:
+          valueFromParameter:
+            outputParameterKey: test_mape
+            producerSubtask: model-evaluation
+        test_r2:
+          valueFromParameter:
+            outputParameterKey: test_r2
+            producerSubtask: model-evaluation
+        test_rmse:
+          valueFromParameter:
+            outputParameterKey: test_rmse
+            producerSubtask: model-evaluation
+    tasks:
+      model-evaluation:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-model-evaluation
+        inputs:
+          artifacts:
+            model:
+              componentInputArtifact: model
+            test_data:
+              componentInputArtifact: test_data
+        taskInfo:
+          name: model-evaluation
+  inputDefinitions:
+    artifacts:
+      model:
+        artifactType:
+          schemaTitle: system.Model
+          schemaVersion: 0.0.1
+      test_data:
+        artifactType:
+          schemaTitle: system.Dataset
+          schemaVersion: 0.0.1
+  outputDefinitions:
+    artifacts:
+      metrics_output:
+        artifactType:
+          schemaTitle: system.Metrics
+          schemaVersion: 0.0.1
+    parameters:
+      test_mae:
+        parameterType: NUMBER_DOUBLE
+      test_mape:
+        parameterType: NUMBER_DOUBLE
+      test_r2:
+        parameterType: NUMBER_DOUBLE
+      test_rmse:
+        parameterType: NUMBER_DOUBLE
+schemaVersion: 2.1.0
+sdkVersion: kfp-2.15.1
