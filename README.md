@@ -19,7 +19,7 @@ A complete MLOps pipeline for predicting housing prices using the California Hou
 
 ---
 
-## 🎯 Project Overview
+## Project Overview
 
 ### Problem Statement
 This project implements a **regression model** to predict median house values in California based on various features such as median income, house age, average rooms, and geographic location.
